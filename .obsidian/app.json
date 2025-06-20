@@ -1,0 +1,8 @@
+{
+  "userIgnoreFilters": [
+    "scripts/"
+  ],
+  "attachmentFolderPath": "./",
+  "newLinkFormat": "relative",
+  "showUnsupportedFiles": true
+}

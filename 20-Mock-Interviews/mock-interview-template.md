@@ -1,0 +1,13 @@
+# Mock Interview – {{date}}
+
+## Focus
+...
+
+## Questions Asked
+...
+
+## Feedback
+...
+
+## Next Steps
+...

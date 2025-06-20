@@ -1,0 +1,236 @@
+{
+  "main": {
+    "id": "6d3a980acec4d6a7",
+    "type": "split",
+    "children": [
+      {
+        "id": "2c3e05f45c845936",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b5fec9b95422d2f1",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "New tab"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "239d899a3d2d6c19",
+    "type": "split",
+    "children": [
+      {
+        "id": "c0e208823dab645d",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "772f275160a12b6d",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "bb5e4125ec7c0b2a",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "9525929c54f04a13",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6b9321a55ef8cffb",
+    "type": "split",
+    "children": [
+      {
+        "id": "a0b7f1a3dc266738",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dece3da873dc88a6",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "10-DSA-Notes/10.07-tty.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for 10.07-tty"
+            }
+          },
+          {
+            "id": "9af4cc3788adb2a4",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links"
+            }
+          },
+          {
+            "id": "6377cdbcfec40641",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "c6bd7dfa9332fc0d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline"
+            }
+          },
+          {
+            "id": "f81979d68184f9db",
+            "type": "leaf",
+            "state": {
+              "type": "calendar",
+              "state": {},
+              "icon": "calendar-with-checkmark",
+              "title": "Calendar"
+            }
+          },
+          {
+            "id": "dffa0632a42fcf32",
+            "type": "leaf",
+            "state": {
+              "type": "git-view",
+              "state": {},
+              "icon": "git-pull-request",
+              "title": "Source Control"
+            }
+          },
+          {
+            "id": "20c22f9361805120",
+            "type": "leaf",
+            "state": {
+              "type": "infranodus-graph-view",
+              "state": {},
+              "icon": "infranodus-icon",
+              "title": "30-Projects/project-template.md"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "markdown-importer:Open format converter": false,
+      "zk-prefixer:Create new unique note": false,
+      "workspaces:Manage workspace layouts": false,
+      "obsidian-git:Open Git source control": false,
+      "templater-obsidian:Templater": false,
+      "infranodus-graph-view:InfraNodus Graph View": false
+    }
+  },
+  "active": "b5fec9b95422d2f1",
+  "lastOpenFiles": [
+    "2025-06-20.md",
+    "10-DSA-Notes/10.07-tty.md",
+    "10-DSA-Notes/10.04-tree.md",
+    "90-Templates/backend-template.md",
+    "12-Backend/12.02-Python-FastAPI/.01-fgfg.md",
+    "12-Backend/12.02-Python-FastAPI/Untitled.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-ghjj.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-fgdfh.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-lolo.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-jjj.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-ghgh.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-fdgbdfg.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-deneme.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-dgfhgdfh.md",
+    "12-Backend/12.01-Go/12.01.01-jkjhgk.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-hh.md",
+    "12-Backend/12.02-Python-FastAPI/12.02.01-jj.md",
+    "12-Backend/12.01-Go/12.01.01-dfhbdf.md",
+    "12-Backend/Python-FastAPI/.01-jj.md",
+    "12-Backend/Python-FastAPI/.01-hh.md",
+    "12-Backend/12.01-Go/12.01.01-ghgdrfh.md",
+    "12-Backend/12.01-Go/go-template.md",
+    "12-Backend/12.01-Go/12.01.01-hh.md",
+    "12-Backend/12.01-Go/12.01.01-fbdfg.md",
+    "12-Backend/Untitled.md",
+    "40-Flashcards/flashcard-template.md",
+    "90-Templates/Untitled",
+    "90-Templates/Backend",
+    "scripts/generate_prefix_filename.js",
+    "30-Projects/30.01-lang-learning",
+    "30-Projects/30.02-trade-analyzer",
+    "Untitled.canvas"
+  ]
+}
