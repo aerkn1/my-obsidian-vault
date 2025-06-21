@@ -1,0 +1,18 @@
+# macOS system files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Obsidian config files (handled by Obsidian sync)
+.obsidian/
+
+# GitHub workflows (not needed for content-only repo)
+.github/
+
+# All other Obsidian files will be tracked normally
+# Large files will be handled by Git LFS
+

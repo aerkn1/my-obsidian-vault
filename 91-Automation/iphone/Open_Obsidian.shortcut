@@ -1,0 +1,8 @@
+{
+  "name": "Open Obsidian Vault",
+  "actions": [
+    "Delete Obsidian vault from iCloud",
+    "Run Working Copy Pull (repo: obsidian-vault)",
+    "Open Obsidian app"
+  ]
+}

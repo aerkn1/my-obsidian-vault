@@ -1,0 +1,8 @@
+{
+  "name": "Close Obsidian Vault",
+  "actions": [
+    "Run Working Copy Commit",
+    "Commit message from commit-messages.json > iphone",
+    "Push to remote"
+  ]
+}
