@@ -1,8 +1,8 @@
 #!/bin/bash
 # This script commits and pushes changes when Obsidian is closed
-# Log file for monitoring
-LOG_FILE="$HOME/obsidian-close.log"
-STATE_FILE="$HOME/.obsidian-last-close"
+# GitHub serves as backup/version control - iCloud handles device sync
+LOG_FILE="$HOME/obsidian-backup.log"
+STATE_FILE="$HOME/.obsidian-last-backup"
 VAULT_DIR="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-obsidian-vault"
 
 # Check if Obsidian is running
@@ -14,21 +14,21 @@ fi
 
 # Use timestamp to prevent duplicate commits
 CURRENT_TIME=$(date +%s)
-LAST_COMMIT_TIME=0
+LAST_BACKUP_TIME=0
 
-# Read last commit time if state file exists
+# Read last backup time if state file exists
 if [ -f "$STATE_FILE" ]; then
-    LAST_COMMIT_TIME=$(cat "$STATE_FILE")
+    LAST_BACKUP_TIME=$(cat "$STATE_FILE")
 fi
 
-# Only commit if at least 30 seconds have passed since last commit
-TIME_DIFF=$((CURRENT_TIME - LAST_COMMIT_TIME))
+# Only backup if at least 30 seconds have passed since last backup
+TIME_DIFF=$((CURRENT_TIME - LAST_BACKUP_TIME))
 if [ $TIME_DIFF -lt 30 ]; then
-    # Too soon since last commit
+    # Too soon since last backup
     exit 0
 fi
 
-# Record current time to prevent duplicate commits
+# Record current time to prevent duplicate backups
 echo "$CURRENT_TIME" > "$STATE_FILE"
 
 echo "[$(date)] Obsidian closed - starting commit process" >> "$LOG_FILE"
