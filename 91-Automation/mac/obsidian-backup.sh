@@ -109,9 +109,49 @@ if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
         echo "[$(date)] Switching to existing local branch $BRANCH_NAME" >> "$LOG_FILE"
         git checkout "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
         
-        # Pull latest changes from remote branch
-        echo "[$(date)] Pulling latest changes from remote $BRANCH_NAME" >> "$LOG_FILE"
-        git pull origin "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
+        # Rebase local changes on top of remote changes
+        echo "[$(date)] Rebasing local changes on top of remote $BRANCH_NAME" >> "$LOG_FILE"
+        
+        # First, fetch the latest changes
+        git fetch origin "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
+        
+        # Check if we need to rebase
+        LOCAL=$(git rev-parse HEAD 2>/dev/null)
+        REMOTE=$(git rev-parse "origin/$BRANCH_NAME" 2>/dev/null)
+        
+        if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "[$(date)] Local and remote have diverged, rebasing local changes on top of remote" >> "$LOG_FILE"
+            
+            # Attempt rebase with automatic conflict resolution
+            if git rebase "origin/$BRANCH_NAME" >> "$LOG_FILE" 2>&1; then
+                echo "[$(date)] Rebase successful - local changes applied on top of remote" >> "$LOG_FILE"
+            else
+                echo "[$(date)] Rebase conflicts detected - resolving automatically" >> "$LOG_FILE"
+                
+                # Get list of conflicted files
+                CONFLICTED_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+                if [ -n "$CONFLICTED_FILES" ]; then
+                    echo "[$(date)] Conflicted files: $CONFLICTED_FILES" >> "$LOG_FILE"
+                    
+                    # Resolve conflicts by keeping our (local) version
+                    for file in $CONFLICTED_FILES; do
+                        git checkout --ours "$file" >> "$LOG_FILE" 2>&1
+                        git add "$file" >> "$LOG_FILE" 2>&1
+                        echo "[$(date)] Resolved conflict in $file by keeping local version" >> "$LOG_FILE"
+                    done
+                    
+                    # Continue rebase
+                    git rebase --continue >> "$LOG_FILE" 2>&1
+                    echo "[$(date)] Rebase completed with local changes preserved" >> "$LOG_FILE"
+                else
+                    # If no conflicted files, abort rebase and reset
+                    git rebase --abort >> "$LOG_FILE" 2>&1
+                    echo "[$(date)] Rebase aborted - no conflicts found but rebase failed" >> "$LOG_FILE"
+                fi
+            fi
+        else
+            echo "[$(date)] Local and remote are in sync, no rebase needed" >> "$LOG_FILE"
+        fi
     else
         echo "[$(date)] Creating local branch $BRANCH_NAME from remote" >> "$LOG_FILE"
         git checkout -b "$BRANCH_NAME" "origin/$BRANCH_NAME" >> "$LOG_FILE" 2>&1
@@ -119,9 +159,24 @@ if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
 else
     echo "[$(date)] Creating new daily branch $BRANCH_NAME" >> "$LOG_FILE"
     
-    # Ensure we're on main and up to date
+    # Ensure we're on main and up to date with rebase
     git checkout main >> "$LOG_FILE" 2>&1
-    git pull origin main >> "$LOG_FILE" 2>&1
+    
+    # Rebase any local changes on main branch
+    git fetch origin main >> "$LOG_FILE" 2>&1
+    LOCAL=$(git rev-parse HEAD 2>/dev/null)
+    REMOTE=$(git rev-parse origin/main 2>/dev/null)
+    
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        echo "[$(date)] Rebasing local main changes on top of remote main" >> "$LOG_FILE"
+        if git rebase origin/main >> "$LOG_FILE" 2>&1; then
+            echo "[$(date)] Main branch rebase successful" >> "$LOG_FILE"
+        else
+            echo "[$(date)] Main branch rebase failed - resetting to remote main" >> "$LOG_FILE"
+            git rebase --abort >> "$LOG_FILE" 2>&1
+            git reset --hard origin/main >> "$LOG_FILE" 2>&1
+        fi
+    fi
     
     # Create and switch to new daily branch
     git checkout -b "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
