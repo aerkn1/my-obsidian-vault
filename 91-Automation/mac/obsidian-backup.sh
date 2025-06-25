@@ -2,10 +2,31 @@
 # Local script for Obsidian backup automation
 # This avoids iCloud extended attribute issues with Launch Agents
 
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
 LOG_FILE="$HOME/obsidian-backup.log"
 STATE_FILE="$HOME/.obsidian-last-backup"
+LOCK_FILE="$HOME/.obsidian-backup.lock"
 ICLOUD_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-obsidian-vault"
 LOCAL_VAULT="$HOME/.obsidian-vault-backup"
+
+# Cleanup function to remove lock file on exit
+cleanup() {
+    rm -f "$LOCK_FILE"
+}
+
+# Set trap to cleanup on exit, interrupt, or termination
+trap cleanup EXIT INT TERM
+
+# Check for existing lock file
+if [ -f "$LOCK_FILE" ]; then
+    echo "[$(date)] Backup already running (lock file exists)" >> "$LOG_FILE"
+    exit 0
+fi
+
+# Create lock file
+echo $$ > "$LOCK_FILE"
 
 # Check if Obsidian is running
 if pgrep -f "Obsidian" > /dev/null 2>&1; then
@@ -40,13 +61,16 @@ echo "[$(date)] Using local vault as primary vault" >> "$LOG_FILE"
 
 cd "$LOCAL_VAULT" || { echo "[$(date)] Failed to change to local vault directory" >> "$LOG_FILE"; rm -f "$STATE_FILE"; exit 1; }
 
-# Get GitHub token from gh CLI
+# Get GitHub token from gh CLI (never echo it)
 GH_TOKEN=$(gh auth token 2>/dev/null)
 if [ -z "$GH_TOKEN" ]; then
     echo "[$(date)] Failed to get GitHub token from gh CLI" >> "$LOG_FILE"
     rm -f "$STATE_FILE"
     exit 1
 fi
+
+# Redirect all output to log file with token redaction
+exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 
 # Initialize git repo if it doesn't exist
 if [ ! -d ".git" ]; then
@@ -109,10 +133,25 @@ if git add . 2>> "$LOG_FILE"; then
     echo "[$(date)] Git add successful" >> "$LOG_FILE"
     if git commit -m "$MESSAGE" 2>> "$LOG_FILE"; then
         echo "[$(date)] Git commit successful" >> "$LOG_FILE"
-        if git push 2>> "$LOG_FILE"; then
-            echo "[$(date)] Successfully backed up changes to GitHub" >> "$LOG_FILE"
-        else
-            echo "[$(date)] Failed to push to GitHub" >> "$LOG_FILE"
+        # Retry push up to 3 times on network errors
+        push_success=false
+        for attempt in 1 2 3; do
+            echo "[$(date)] Push attempt $attempt/3"
+            if git push 2>&1 | tee -a "$LOG_FILE"; then
+                echo "[$(date)] Successfully backed up changes to GitHub"
+                push_success=true
+                break
+            else
+                echo "[$(date)] Push attempt $attempt failed"
+                if [ $attempt -lt 3 ]; then
+                    echo "[$(date)] Waiting 5 seconds before retry..."
+                    sleep 5
+                fi
+            fi
+        done
+        
+        if [ "$push_success" != "true" ]; then
+            echo "[$(date)] Failed to push to GitHub after 3 attempts"
             rm -f "$STATE_FILE"  # Remove state on failure so it can retry
         fi
     else

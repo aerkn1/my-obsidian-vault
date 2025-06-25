@@ -1,8 +1,28 @@
 #!/bin/bash
 # Simple background sync - pulls updates when Obsidian is closed
 
+# Exit on error, undefined variables, and pipe failures
+set -euo pipefail
+
 LOG_FILE="$HOME/obsidian-sync.log"
+LOCK_FILE="$HOME/.obsidian-sync.lock"
 LOCAL_VAULT="$HOME/.obsidian-vault-backup"
+
+# Cleanup function to remove lock file on exit
+cleanup() {
+    rm -f "$LOCK_FILE"
+}
+
+# Set trap to cleanup on exit, interrupt, or termination
+trap cleanup EXIT INT TERM
+
+# Check for existing lock file
+if [ -f "$LOCK_FILE" ]; then
+    exit 0
+fi
+
+# Create lock file
+echo $$ > "$LOCK_FILE"
 
 # Only sync if Obsidian is NOT running
 if pgrep -f "Obsidian" > /dev/null 2>&1; then
@@ -11,11 +31,14 @@ fi
 
 cd "$LOCAL_VAULT" || exit 1
 
-# Get GitHub token
+# Get GitHub token from gh CLI (never echo it)
 GH_TOKEN=$(gh auth token 2>/dev/null)
 if [ -z "$GH_TOKEN" ]; then
     exit 1
 fi
+
+# Redirect all output to log file with token redaction
+exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 
 # Simple pull if there are remote changes
 git remote set-url origin https://Ardae1:$GH_TOKEN@github.com/Ardae1/my-obsidian-vault.git > /dev/null 2>&1
