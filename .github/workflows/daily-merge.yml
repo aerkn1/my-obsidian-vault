@@ -1,0 +1,105 @@
+name: Daily Branch Merge and Cleanup
+
+on:
+  schedule:
+    # Run at midnight UTC every day
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger for testing
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge-daily-branches:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Configure Git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+    
+    - name: Get yesterday's date branch name
+      id: get_branch
+      run: |
+        # Get yesterday's date in YYYY-MM-DD format
+        YESTERDAY_DATE=$(date -d "yesterday" +%Y-%m-%d)
+        echo "branch_name=obsidian-${YESTERDAY_DATE}" >> $GITHUB_OUTPUT
+        echo "Yesterday's branch: obsidian-${YESTERDAY_DATE}"
+    
+    - name: Check if yesterday's branch exists
+      id: check_branch
+      run: |
+        BRANCH_NAME="${{ steps.get_branch.outputs.branch_name }}"
+        if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
+          echo "branch_exists=true" >> $GITHUB_OUTPUT
+          echo "Branch $BRANCH_NAME exists"
+        else
+          echo "branch_exists=false" >> $GITHUB_OUTPUT
+          echo "Branch $BRANCH_NAME does not exist"
+        fi
+    
+    - name: Merge and delete yesterday's branch
+      if: steps.check_branch.outputs.branch_exists == 'true'
+      run: |
+        BRANCH_NAME="${{ steps.get_branch.outputs.branch_name }}"
+        
+        echo "Fetching latest changes..."
+        git fetch origin
+        
+        echo "Switching to main branch..."
+        git checkout main
+        git pull origin main
+        
+        echo "Merging $BRANCH_NAME into main..."
+        git merge "origin/$BRANCH_NAME" --no-ff -m "Daily merge: $BRANCH_NAME"
+        
+        echo "Pushing merged changes to main..."
+        git push origin main
+        
+        echo "Deleting remote branch $BRANCH_NAME..."
+        git push origin --delete "$BRANCH_NAME"
+        
+        echo "Successfully merged and deleted $BRANCH_NAME"
+    
+    - name: Clean up old branches (older than 7 days)
+      run: |
+        echo "Cleaning up branches older than 7 days..."
+        
+        # Get all remote branches that match the obsidian-YYYY-MM-DD pattern
+        git for-each-ref --format='%(refname:short)' refs/remotes/origin/obsidian-* | while read branch; do
+          # Extract date from branch name (remove origin/ prefix and obsidian- prefix)
+          branch_local=$(echo "$branch" | sed 's|origin/||')
+          branch_date=$(echo "$branch_local" | sed 's/obsidian-//')
+          
+          # Check if date is valid and older than 7 days
+          if date -d "$branch_date" >/dev/null 2>&1; then
+            branch_timestamp=$(date -d "$branch_date" +%s)
+            cutoff_timestamp=$(date -d "7 days ago" +%s)
+            
+            if [ "$branch_timestamp" -lt "$cutoff_timestamp" ]; then
+              echo "Deleting old branch: $branch_local (date: $branch_date)"
+              git push origin --delete "$branch_local" || echo "Failed to delete $branch_local (may already be deleted)"
+            fi
+          fi
+        done
+        
+        echo "Branch cleanup completed"
+    
+    - name: Summary
+      run: |
+        echo "Daily merge workflow completed"
+        echo "- Processed branch: ${{ steps.get_branch.outputs.branch_name }}"
+        echo "- Branch existed: ${{ steps.check_branch.outputs.branch_exists }}"
+        if [ "${{ steps.check_branch.outputs.branch_exists }}" = "true" ]; then
+          echo "- Action taken: Merged to main and deleted branch"
+        else
+          echo "- Action taken: No branch to merge"
+        fi
