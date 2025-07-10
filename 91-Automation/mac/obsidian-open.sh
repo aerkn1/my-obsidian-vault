@@ -84,15 +84,17 @@ if git rev-list --count @..@{u} > /dev/null 2>&1; then
     fi
 fi
 
-# Remove today's branch assumption
-# Use LATEST_BRANCH for operations throughout
+# STEP 2: Determine the latest branch to sync to
+TODAY=$(date +%Y-%m-%d)
+TODAY_BRANCH="obsidian-$TODAY"
+echo "[$(date)] Today's branch: $TODAY_BRANCH"
 
 # Function to find the latest daily branch
 find_latest_branch() {
     local latest_branch="main"
     local latest_date=""
     
-    echo "[$(date)] Searching for latest daily branch..." 1>&2
+    echo "[$(date)] Searching for latest daily branch..."
     
     # Get all remote obsidian-* branches and find the latest date
     for branch in $(git ls-remote --heads origin | grep 'obsidian-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | sed 's/.*refs\/heads\///'); do
@@ -103,15 +105,13 @@ find_latest_branch() {
         fi
     done
     
-    echo "[$(date)] Latest daily branch found: $latest_branch" 1>&2
+    echo "[$(date)] Latest daily branch found: $latest_branch"
     echo "$latest_branch"
 }
 
 # Find the latest branch (prefer remote)
-echo "[$(date)] Finding latest branch to sync with..."
 LATEST_BRANCH=$(find_latest_branch)
-echo "[$(date)] Latest branch detected: $LATEST_BRANCH"
-echo "[$(date)] Starting rebase-based sync workflow..."
+echo "[$(date)] Latest branch to sync with: $LATEST_BRANCH"
 
 # STEP 3: Apply new git-flow logic based on principles
 if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
@@ -147,20 +147,20 @@ if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
         
         # If we have unpushed commits, we need to rebase them
         if [ "$UNPUSHED_COMMITS" = true ]; then
-            echo "[$(date)] Rebasing on $LATEST_BRANCH with the remote preference"
-            git rebase --strategy-option=theirs "$LATEST_BRANCH" || {
-                echo "[$(date)] Rebase conflicts detected"
-                exit 1
+            echo "[$(date)] Rebasing unpushed commits from $CURRENT_BRANCH onto $LATEST_BRANCH"
+            # Use rebase with remote preference strategy for conflicts
+            git rebase -X theirs "origin/$LATEST_BRANCH" "$CURRENT_BRANCH" || {
+                echo "[$(date)] Rebase conflicts detected - auto-resolving with remote preference"
+                git rebase --skip 2>/dev/null || true
+                while [ -f ".git/rebase-merge/msgnum" ] || [ -f ".git/rebase-apply/next" ]; do
+                    git rebase --continue 2>/dev/null || git rebase --skip 2>/dev/null || break
+                done
             }
         fi
     else
         # We're already on the latest branch, just sync it
-        echo "[$(date)] Already on $LATEST_BRANCH - rebasing with remote"
-        git rebase --strategy-option=theirs "origin/$LATEST_BRANCH" || {
-            echo "[$(date)] Rebase failed on $LATEST_BRANCH"
-            exit 1
-        }
-        echo "[$(date)] Rebase completed successfully on $LATEST_BRANCH"
+        echo "[$(date)] Already on $LATEST_BRANCH - syncing with remote"
+        git reset --hard "origin/$LATEST_BRANCH"
     fi
     
     # Restore stashed changes if any
@@ -173,16 +173,23 @@ if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
         }
     fi
     
-    # Stay on current branch after rebase
-    echo "[$(date)] Staying on current branch: $CURRENT_BRANCH"
+    # Switch to today's branch for work
+    if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ] && [ "$LATEST_BRANCH" != "$TODAY_BRANCH" ]; then
+        echo "[$(date)] Creating/switching to today's working branch: $TODAY_BRANCH"
+        if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+            git checkout "$TODAY_BRANCH"
+        else
+            git checkout -b "$TODAY_BRANCH"
+        fi
+    fi
     
 else
-    echo "[$(date)] No local work - safe to rebase to $LATEST_BRANCH"
+    echo "[$(date)] No local work - safe to hard-reset to $LATEST_BRANCH"
     
-    # Principle 1: Rebase to LATEST_BRANCH when no local work
+    # Principle 1: Hard-reset to LATEST_BRANCH when no local work
     if [ "$LATEST_BRANCH" != "main" ]; then
-        echo "[$(date)] Rebasing to $LATEST_BRANCH"
-
+        echo "[$(date)] Hard-resetting to remote $LATEST_BRANCH"
+        
         # Ensure we have the latest branch locally
         if ! git branch --list "$LATEST_BRANCH" | grep -q "$LATEST_BRANCH"; then
             echo "[$(date)] Creating local tracking branch for $LATEST_BRANCH"
@@ -191,12 +198,18 @@ else
             git checkout "$LATEST_BRANCH"
         fi
         
-        # Rebase to remote
-        git rebase --strategy-option=theirs "origin/$LATEST_BRANCH" || {
-            echo "[$(date)] Rebase failed on $LATEST_BRANCH"
-            exit 1
-        }
-        echo "[$(date)] Rebase completed successfully on $LATEST_BRANCH"
+        # Hard reset to remote
+        git reset --hard "origin/$LATEST_BRANCH"
+        
+        # Create today's branch if it doesn't exist
+        if [ "$LATEST_BRANCH" != "$TODAY_BRANCH" ]; then
+            if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+                echo "[$(date)] Creating today's branch $TODAY_BRANCH from $LATEST_BRANCH"
+                git checkout -b "$TODAY_BRANCH"
+            else
+                git checkout "$TODAY_BRANCH"
+            fi
+        fi
         
     else
         echo "[$(date)] No daily branches exist - falling back to main"
@@ -207,17 +220,17 @@ else
             git checkout main
         fi
         
-        echo "[$(date)] Rebasing to remote main"
-        git rebase --strategy-option=theirs origin/main || {
-            echo "[$(date)] Rebase failed on main"
-            exit 1
-        }
-        echo "[$(date)] Rebase completed successfully on main"
+        echo "[$(date)] Hard-resetting to remote main"
+        git reset --hard origin/main
         
-        # Stay on main branch
+        # Create today's branch from main for future work
+        if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+            echo "[$(date)] Creating today's branch $TODAY_BRANCH from main"
+            git checkout -b "$TODAY_BRANCH"
+        fi
     fi
     
-    # Clean up any untracked files after rebase
+    # Clean up any untracked files after hard reset
     git clean -fd
 fi
 
