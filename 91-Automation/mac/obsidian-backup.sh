@@ -90,11 +90,14 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
     exit 0
 fi
 
-# Get today's date for branch name
-TODAY=$(date +%Y-%m-%d)
-BRANCH_NAME="obsidian-$TODAY"
-
-echo "[$(date)] Using daily branch: $BRANCH_NAME" >> "$LOG_FILE"
+# Get current branch and handle switching
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" == "HEAD" ] || [ "$CURRENT_BRANCH" == "main" ]; then
+    BRANCH_NAME="latest_daily"
+    git checkout -B "$BRANCH_NAME"
+else
+    BRANCH_NAME="$CURRENT_BRANCH"
+fi
 
 # Fetch all remote changes
 echo "[$(date)] Fetching remote changes" >> "$LOG_FILE"
@@ -182,19 +185,8 @@ else
     git checkout -b "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
 fi
 
-# Load commit message template from JSON
-if [ -f "$LOCAL_VAULT/91-Automation/commit-messages.json" ]; then
-    TEMPLATE=$(jq -r '.mac' "$LOCAL_VAULT/91-Automation/commit-messages.json" 2>/dev/null)
-    if [ "$TEMPLATE" = "null" ] || [ -z "$TEMPLATE" ]; then
-        TEMPLATE="Auto-commit from Mac on close - {{datetime}}"
-    fi
-else
-    TEMPLATE="Auto-commit from Mac on close - {{datetime}}"
-fi
-
-# Insert current date/time into template
-NOW=$(date "+%Y-%m-%d %H:%M")
-MESSAGE="${TEMPLATE//\{\{datetime\}\}/$NOW}"
+# Set commit message as required
+MESSAGE="Auto-save $(date)"
 
 echo "[$(date)] Backing up changes with message: $MESSAGE" >> "$LOG_FILE"
 
@@ -211,7 +203,7 @@ if git add . 2>> "$LOG_FILE"; then
         push_success=false
         for attempt in 1 2 3; do
             echo "[$(date)] Push attempt $attempt/3 to branch $BRANCH_NAME"
-            if git push origin "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+            if git push -u origin "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"; then
                 echo "[$(date)] Successfully backed up changes to GitHub branch $BRANCH_NAME"
                 push_success=true
                 break
@@ -226,6 +218,8 @@ if git add . 2>> "$LOG_FILE"; then
         
         if [ "$push_success" != "true" ]; then
             echo "[$(date)] Failed to push to GitHub after 3 attempts"
+            echo "[$(date)] Merge conflict occurred. Aborting push."
+            git merge --abort
             rm -f "$STATE_FILE"  # Remove state on failure so it can retry
         fi
     else

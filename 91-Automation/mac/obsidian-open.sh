@@ -84,57 +84,122 @@ if git rev-list --count @..@{u} > /dev/null 2>&1; then
     fi
 fi
 
-# STEP 2: Determine today's branch and target
-TODAY=$(date +%Y-%m-%d)
-TODAY_BRANCH="obsidian-$TODAY"
-echo "[$(date)] Today's target branch: $TODAY_BRANCH"
+# Remove today's branch assumption
+# Use LATEST_BRANCH for operations throughout
 
-# STEP 3: Safe sync logic
+# Function to find the latest daily branch
+find_latest_branch() {
+    local latest_branch="main"
+    local latest_date=""
+    
+    echo "[$(date)] Searching for latest daily branch..." 1>&2
+    
+    # Get all remote obsidian-* branches and find the latest date
+    for branch in $(git ls-remote --heads origin | grep 'obsidian-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | sed 's/.*refs\/heads\///'); do
+        branch_date=$(echo "$branch" | sed 's/obsidian-//')
+        if [ -z "$latest_date" ] || [ "$branch_date" > "$latest_date" ]; then
+            latest_date="$branch_date"
+            latest_branch="$branch"
+        fi
+    done
+    
+    echo "[$(date)] Latest daily branch found: $latest_branch" 1>&2
+    echo "$latest_branch"
+}
+
+# Find the latest branch (prefer remote)
+echo "[$(date)] Finding latest branch to sync with..."
+LATEST_BRANCH=$(find_latest_branch)
+echo "[$(date)] Latest branch detected: $LATEST_BRANCH"
+echo "[$(date)] Starting rebase-based sync workflow..."
+
+# STEP 3: Apply new git-flow logic based on principles
 if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
-    echo "[$(date)] Local changes detected - skipping remote sync to preserve work"
-    echo "[$(date)] Current state preserved:"
+    echo "[$(date)] Local work detected - will rebase on $LATEST_BRANCH"
+    echo "[$(date)] Current state:"
     echo "[$(date)] - Uncommitted changes: $UNCOMMITTED_CHANGES"
     echo "[$(date)] - Unpushed commits: $UNPUSHED_COMMITS"
     echo "[$(date)] - Current branch: $CURRENT_BRANCH"
     
-    # Just ensure we're on the right branch for today if possible
-    if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
-        # Only switch if the target branch exists and we have no uncommitted changes
-        if [ "$UNCOMMITTED_CHANGES" = false ] && git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-            echo "[$(date)] Switching to today's branch $TODAY_BRANCH (no uncommitted changes)"
-            if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-                git checkout "$TODAY_BRANCH"
-            else
-                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
-            fi
-        else
-            echo "[$(date)] Staying on $CURRENT_BRANCH to preserve local changes"
+    # Principle 2: Rebase local work on top of LATEST_BRANCH
+    echo "[$(date)] Rebasing local work on top of $LATEST_BRANCH..."
+    
+    # First, stash any uncommitted changes
+    stash_applied=false
+    if [ "$UNCOMMITTED_CHANGES" = true ]; then
+        echo "[$(date)] Stashing uncommitted changes..."
+        git stash push -m "Auto-stash before rebase - $(date)"
+        stash_applied=true
+    fi
+    
+    # Ensure we have the latest remote branch locally
+    if [ "$LATEST_BRANCH" != "main" ]; then
+        if ! git branch --list "$LATEST_BRANCH" | grep -q "$LATEST_BRANCH"; then
+            echo "[$(date)] Creating local tracking branch for $LATEST_BRANCH"
+            git checkout -b "$LATEST_BRANCH" "origin/$LATEST_BRANCH"
         fi
     fi
     
-else
-    echo "[$(date)] No local changes detected - safe to sync with remote"
-    
-    # Check if today's daily branch exists remotely
-    if git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-        echo "[$(date)] Today's daily branch exists remotely: $TODAY_BRANCH"
+    # Switch to target branch and ensure it's up to date
+    if [ "$CURRENT_BRANCH" != "$LATEST_BRANCH" ]; then
+        echo "[$(date)] Switching to $LATEST_BRANCH"
+        git checkout "$LATEST_BRANCH"
         
-        # Switch to daily branch if not already there
-        if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
-            echo "[$(date)] Switching to daily branch $TODAY_BRANCH"
-            
-            if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-                git checkout "$TODAY_BRANCH"
-            else
-                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
-            fi
+        # If we have unpushed commits, we need to rebase them
+        if [ "$UNPUSHED_COMMITS" = true ]; then
+            echo "[$(date)] Rebasing on $LATEST_BRANCH with the remote preference"
+            git rebase --strategy-option=theirs "$LATEST_BRANCH" || {
+                echo "[$(date)] Rebase conflicts detected"
+                exit 1
+            }
+        fi
+    else
+        # We're already on the latest branch, just sync it
+        echo "[$(date)] Already on $LATEST_BRANCH - rebasing with remote"
+        git rebase --strategy-option=theirs "origin/$LATEST_BRANCH" || {
+            echo "[$(date)] Rebase failed on $LATEST_BRANCH"
+            exit 1
+        }
+        echo "[$(date)] Rebase completed successfully on $LATEST_BRANCH"
+    fi
+    
+    # Restore stashed changes if any
+    if [ "$stash_applied" = true ]; then
+        echo "[$(date)] Restoring stashed changes..."
+        git stash pop || {
+            echo "[$(date)] Stash conflicts detected - auto-resolving with local preference"
+            git checkout --theirs . 2>/dev/null || true
+            git add . 2>/dev/null || true
+        }
+    fi
+    
+    # Stay on current branch after rebase
+    echo "[$(date)] Staying on current branch: $CURRENT_BRANCH"
+    
+else
+    echo "[$(date)] No local work - safe to rebase to $LATEST_BRANCH"
+    
+    # Principle 1: Rebase to LATEST_BRANCH when no local work
+    if [ "$LATEST_BRANCH" != "main" ]; then
+        echo "[$(date)] Rebasing to $LATEST_BRANCH"
+
+        # Ensure we have the latest branch locally
+        if ! git branch --list "$LATEST_BRANCH" | grep -q "$LATEST_BRANCH"; then
+            echo "[$(date)] Creating local tracking branch for $LATEST_BRANCH"
+            git checkout -b "$LATEST_BRANCH" "origin/$LATEST_BRANCH"
+        else
+            git checkout "$LATEST_BRANCH"
         fi
         
-        echo "[$(date)] Syncing with remote daily branch (prefer remote)"
-        git reset --hard "origin/$TODAY_BRANCH"
+        # Rebase to remote
+        git rebase --strategy-option=theirs "origin/$LATEST_BRANCH" || {
+            echo "[$(date)] Rebase failed on $LATEST_BRANCH"
+            exit 1
+        }
+        echo "[$(date)] Rebase completed successfully on $LATEST_BRANCH"
         
     else
-        echo "[$(date)] Today's daily branch doesn't exist remotely yet"
+        echo "[$(date)] No daily branches exist - falling back to main"
         
         # Switch to main if not already there
         if [ "$CURRENT_BRANCH" != "main" ]; then
@@ -142,17 +207,17 @@ else
             git checkout main
         fi
         
-        echo "[$(date)] Syncing with remote main (prefer remote)"
-        git reset --hard origin/main
+        echo "[$(date)] Rebasing to remote main"
+        git rebase --strategy-option=theirs origin/main || {
+            echo "[$(date)] Rebase failed on main"
+            exit 1
+        }
+        echo "[$(date)] Rebase completed successfully on main"
         
-        # Create today's branch from main for future work
-        if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-            echo "[$(date)] Creating today's branch $TODAY_BRANCH from main"
-            git checkout -b "$TODAY_BRANCH"
-        fi
+        # Stay on main branch
     fi
     
-    # Clean up any untracked files only if we synced
+    # Clean up any untracked files after rebase
     git clean -fd
 fi
 
