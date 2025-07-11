@@ -90,11 +90,14 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
     exit 0
 fi
 
-# Get today's date for branch name
-TODAY=$(date +%Y-%m-%d)
-BRANCH_NAME="obsidian-$TODAY"
-
-echo "[$(date)] Using daily branch: $BRANCH_NAME" >> "$LOG_FILE"
+# Get current branch and handle switching
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$CURRENT_BRANCH" == "HEAD" ] || [ "$CURRENT_BRANCH" == "main" ]; then
+    BRANCH_NAME="latest_daily"
+    git checkout -B "$BRANCH_NAME"
+else
+    BRANCH_NAME="$CURRENT_BRANCH"
+fi
 
 # Fetch all remote changes
 echo "[$(date)] Fetching remote changes" >> "$LOG_FILE"
@@ -109,9 +112,49 @@ if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
         echo "[$(date)] Switching to existing local branch $BRANCH_NAME" >> "$LOG_FILE"
         git checkout "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
         
-        # Pull latest changes from remote branch
-        echo "[$(date)] Pulling latest changes from remote $BRANCH_NAME" >> "$LOG_FILE"
-        git pull origin "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
+        # Rebase local changes on top of remote changes
+        echo "[$(date)] Rebasing local changes on top of remote $BRANCH_NAME" >> "$LOG_FILE"
+        
+        # First, fetch the latest changes
+        git fetch origin "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
+        
+        # Check if we need to rebase
+        LOCAL=$(git rev-parse HEAD 2>/dev/null)
+        REMOTE=$(git rev-parse "origin/$BRANCH_NAME" 2>/dev/null)
+        
+        if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "[$(date)] Local and remote have diverged, rebasing local changes on top of remote" >> "$LOG_FILE"
+            
+            # Attempt rebase with automatic conflict resolution
+            if git rebase "origin/$BRANCH_NAME" >> "$LOG_FILE" 2>&1; then
+                echo "[$(date)] Rebase successful - local changes applied on top of remote" >> "$LOG_FILE"
+            else
+                echo "[$(date)] Rebase conflicts detected - resolving automatically" >> "$LOG_FILE"
+                
+                # Get list of conflicted files
+                CONFLICTED_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || echo "")
+                if [ -n "$CONFLICTED_FILES" ]; then
+                    echo "[$(date)] Conflicted files: $CONFLICTED_FILES" >> "$LOG_FILE"
+                    
+                    # Resolve conflicts by keeping our (local) version
+                    for file in $CONFLICTED_FILES; do
+                        git checkout --ours "$file" >> "$LOG_FILE" 2>&1
+                        git add "$file" >> "$LOG_FILE" 2>&1
+                        echo "[$(date)] Resolved conflict in $file by keeping local version" >> "$LOG_FILE"
+                    done
+                    
+                    # Continue rebase
+                    git rebase --continue >> "$LOG_FILE" 2>&1
+                    echo "[$(date)] Rebase completed with local changes preserved" >> "$LOG_FILE"
+                else
+                    # If no conflicted files, abort rebase and reset
+                    git rebase --abort >> "$LOG_FILE" 2>&1
+                    echo "[$(date)] Rebase aborted - no conflicts found but rebase failed" >> "$LOG_FILE"
+                fi
+            fi
+        else
+            echo "[$(date)] Local and remote are in sync, no rebase needed" >> "$LOG_FILE"
+        fi
     else
         echo "[$(date)] Creating local branch $BRANCH_NAME from remote" >> "$LOG_FILE"
         git checkout -b "$BRANCH_NAME" "origin/$BRANCH_NAME" >> "$LOG_FILE" 2>&1
@@ -119,27 +162,31 @@ if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
 else
     echo "[$(date)] Creating new daily branch $BRANCH_NAME" >> "$LOG_FILE"
     
-    # Ensure we're on main and up to date
+    # Ensure we're on main and up to date with rebase
     git checkout main >> "$LOG_FILE" 2>&1
-    git pull origin main >> "$LOG_FILE" 2>&1
+    
+    # Rebase any local changes on main branch
+    git fetch origin main >> "$LOG_FILE" 2>&1
+    LOCAL=$(git rev-parse HEAD 2>/dev/null)
+    REMOTE=$(git rev-parse origin/main 2>/dev/null)
+    
+    if [ "$LOCAL" != "$REMOTE" ]; then
+        echo "[$(date)] Rebasing local main changes on top of remote main" >> "$LOG_FILE"
+        if git rebase origin/main >> "$LOG_FILE" 2>&1; then
+            echo "[$(date)] Main branch rebase successful" >> "$LOG_FILE"
+        else
+            echo "[$(date)] Main branch rebase failed - resetting to remote main" >> "$LOG_FILE"
+            git rebase --abort >> "$LOG_FILE" 2>&1
+            git reset --hard origin/main >> "$LOG_FILE" 2>&1
+        fi
+    fi
     
     # Create and switch to new daily branch
     git checkout -b "$BRANCH_NAME" >> "$LOG_FILE" 2>&1
 fi
 
-# Load commit message template from JSON
-if [ -f "$LOCAL_VAULT/91-Automation/commit-messages.json" ]; then
-    TEMPLATE=$(jq -r '.mac' "$LOCAL_VAULT/91-Automation/commit-messages.json" 2>/dev/null)
-    if [ "$TEMPLATE" = "null" ] || [ -z "$TEMPLATE" ]; then
-        TEMPLATE="Auto-commit from Mac on close - {{datetime}}"
-    fi
-else
-    TEMPLATE="Auto-commit from Mac on close - {{datetime}}"
-fi
-
-# Insert current date/time into template
-NOW=$(date "+%Y-%m-%d %H:%M")
-MESSAGE="${TEMPLATE//\{\{datetime\}\}/$NOW}"
+# Set commit message as required
+MESSAGE="Auto-save $(date)"
 
 echo "[$(date)] Backing up changes with message: $MESSAGE" >> "$LOG_FILE"
 
@@ -156,7 +203,7 @@ if git add . 2>> "$LOG_FILE"; then
         push_success=false
         for attempt in 1 2 3; do
             echo "[$(date)] Push attempt $attempt/3 to branch $BRANCH_NAME"
-            if git push origin "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+            if git push -u origin "$BRANCH_NAME" 2>&1 | tee -a "$LOG_FILE"; then
                 echo "[$(date)] Successfully backed up changes to GitHub branch $BRANCH_NAME"
                 push_success=true
                 break
@@ -171,6 +218,8 @@ if git add . 2>> "$LOG_FILE"; then
         
         if [ "$push_success" != "true" ]; then
             echo "[$(date)] Failed to push to GitHub after 3 attempts"
+            echo "[$(date)] Merge conflict occurred. Aborting push."
+            git merge --abort
             rm -f "$STATE_FILE"  # Remove state on failure so it can retry
         fi
     else
