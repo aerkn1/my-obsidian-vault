@@ -129,6 +129,7 @@ if git add . 2>> "$LOG_FILE"; then
             echo "[$(date)] Push attempt $attempt/3 to branch $CURRENT_BRANCH"
             if git push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
                 echo "[$(date)] Successfully backed up changes to GitHub branch $CURRENT_BRANCH"
+
                 push_success=true
                 break
             else
@@ -142,6 +143,8 @@ if git add . 2>> "$LOG_FILE"; then
         
         if [ "$push_success" != "true" ]; then
             echo "[$(date)] Failed to push to GitHub after 3 attempts"
+            echo "[$(date)] Merge conflict occurred. Aborting push."
+            git merge --abort
             rm -f "$STATE_FILE"  # Remove state on failure so it can retry
         fi
     else
