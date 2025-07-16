@@ -84,135 +84,57 @@ if git rev-list --count @..@{u} > /dev/null 2>&1; then
     fi
 fi
 
-# STEP 2: Determine the latest branch to sync to
+# STEP 2: Determine today's branch and target
 TODAY=$(date +%Y-%m-%d)
 TODAY_BRANCH="obsidian-$TODAY"
-echo "[$(date)] Today's branch: $TODAY_BRANCH"
+echo "[$(date)] Today's target branch: $TODAY_BRANCH"
 
-# Function to find the latest daily branch
-find_latest_branch() {
-    local latest_branch="main"
-    local latest_date=""
-    
-    echo "[$(date)] Searching for latest daily branch..."
-    
-    # Get all remote obsidian-* branches and find the latest date
-    for branch in $(git ls-remote --heads origin | grep 'obsidian-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}' | sed 's/.*refs\/heads\///'); do
-        branch_date=$(echo "$branch" | sed 's/obsidian-//')
-        if [ -z "$latest_date" ] || [ "$branch_date" > "$latest_date" ]; then
-            latest_date="$branch_date"
-            latest_branch="$branch"
-        fi
-    done
-    
-    echo "[$(date)] Latest daily branch found: $latest_branch"
-    echo "$latest_branch"
-}
-
-# Find the latest branch (prefer remote)
-LATEST_BRANCH=$(find_latest_branch)
-echo "[$(date)] Latest branch to sync with: $LATEST_BRANCH"
-
-# STEP 3: Apply new git-flow logic based on principles
+# STEP 3: Safe sync logic
 if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
-    echo "[$(date)] Local work detected - will rebase on $LATEST_BRANCH"
-    echo "[$(date)] Current state:"
+    echo "[$(date)] Local changes detected - skipping remote sync to preserve work"
+    echo "[$(date)] Current state preserved:"
     echo "[$(date)] - Uncommitted changes: $UNCOMMITTED_CHANGES"
     echo "[$(date)] - Unpushed commits: $UNPUSHED_COMMITS"
     echo "[$(date)] - Current branch: $CURRENT_BRANCH"
     
-    # Principle 2: Rebase local work on top of LATEST_BRANCH
-    echo "[$(date)] Rebasing local work on top of $LATEST_BRANCH..."
-    
-    # First, stash any uncommitted changes
-    stash_applied=false
-    if [ "$UNCOMMITTED_CHANGES" = true ]; then
-        echo "[$(date)] Stashing uncommitted changes..."
-        git stash push -m "Auto-stash before rebase - $(date)"
-        stash_applied=true
-    fi
-    
-    # Ensure we have the latest remote branch locally
-    if [ "$LATEST_BRANCH" != "main" ]; then
-        if ! git branch --list "$LATEST_BRANCH" | grep -q "$LATEST_BRANCH"; then
-            echo "[$(date)] Creating local tracking branch for $LATEST_BRANCH"
-            git checkout -b "$LATEST_BRANCH" "origin/$LATEST_BRANCH"
-        fi
-    fi
-    
-    # Switch to target branch and ensure it's up to date
-    if [ "$CURRENT_BRANCH" != "$LATEST_BRANCH" ]; then
-        echo "[$(date)] Switching to $LATEST_BRANCH"
-        git checkout "$LATEST_BRANCH"
-        
-        # If we have unpushed commits, we need to rebase them
-        if [ "$UNPUSHED_COMMITS" = true ]; then
-            echo "[$(date)] Rebasing unpushed commits from $CURRENT_BRANCH onto $LATEST_BRANCH"
-            # Use rebase with remote preference strategy for conflicts
-            git rebase -X theirs "origin/$LATEST_BRANCH" "$CURRENT_BRANCH" || {
-                echo "[$(date)] Rebase conflicts detected - auto-resolving with remote preference"
-                git rebase --skip 2>/dev/null || true
-                while [ -f ".git/rebase-merge/msgnum" ] || [ -f ".git/rebase-apply/next" ]; do
-                    git rebase --continue 2>/dev/null || git rebase --skip 2>/dev/null || break
-                done
-            }
-        fi
-    else
-        # We're already on the latest branch, just sync it
-        echo "[$(date)] Already on $LATEST_BRANCH - syncing with remote"
-        git reset --hard "origin/$LATEST_BRANCH"
-    fi
-    
-    # Restore stashed changes if any
-    if [ "$stash_applied" = true ]; then
-        echo "[$(date)] Restoring stashed changes..."
-        git stash pop || {
-            echo "[$(date)] Stash conflicts detected - auto-resolving with local preference"
-            git checkout --theirs . 2>/dev/null || true
-            git add . 2>/dev/null || true
-        }
-    fi
-    
-    # Switch to today's branch for work
-    if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ] && [ "$LATEST_BRANCH" != "$TODAY_BRANCH" ]; then
-        echo "[$(date)] Creating/switching to today's working branch: $TODAY_BRANCH"
-        if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-            git checkout "$TODAY_BRANCH"
+    # Just ensure we're on the right branch for today if possible
+    if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
+        # Only switch if the target branch exists and we have no uncommitted changes
+        if [ "$UNCOMMITTED_CHANGES" = false ] && git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+            echo "[$(date)] Switching to today's branch $TODAY_BRANCH (no uncommitted changes)"
+            if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+                git checkout "$TODAY_BRANCH"
+            else
+                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
+            fi
         else
-            git checkout -b "$TODAY_BRANCH"
+            echo "[$(date)] Staying on $CURRENT_BRANCH to preserve local changes"
         fi
     fi
     
 else
-    echo "[$(date)] No local work - safe to hard-reset to $LATEST_BRANCH"
+    echo "[$(date)] No local changes detected - safe to sync with remote"
     
-    # Principle 1: Hard-reset to LATEST_BRANCH when no local work
-    if [ "$LATEST_BRANCH" != "main" ]; then
-        echo "[$(date)] Hard-resetting to remote $LATEST_BRANCH"
+    # Check if today's daily branch exists remotely
+    if git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+        echo "[$(date)] Today's daily branch exists remotely: $TODAY_BRANCH"
         
-        # Ensure we have the latest branch locally
-        if ! git branch --list "$LATEST_BRANCH" | grep -q "$LATEST_BRANCH"; then
-            echo "[$(date)] Creating local tracking branch for $LATEST_BRANCH"
-            git checkout -b "$LATEST_BRANCH" "origin/$LATEST_BRANCH"
-        else
-            git checkout "$LATEST_BRANCH"
-        fi
-        
-        # Hard reset to remote
-        git reset --hard "origin/$LATEST_BRANCH"
-        
-        # Create today's branch if it doesn't exist
-        if [ "$LATEST_BRANCH" != "$TODAY_BRANCH" ]; then
-            if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-                echo "[$(date)] Creating today's branch $TODAY_BRANCH from $LATEST_BRANCH"
-                git checkout -b "$TODAY_BRANCH"
-            else
+        # Switch to daily branch if not already there
+        if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
+            echo "[$(date)] Switching to daily branch $TODAY_BRANCH"
+            
+            if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
                 git checkout "$TODAY_BRANCH"
+            else
+                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
             fi
         fi
         
+        echo "[$(date)] Syncing with remote daily branch (prefer remote)"
+        git reset --hard "origin/$TODAY_BRANCH"
+        
     else
-        echo "[$(date)] No daily branches exist - falling back to main"
+        echo "[$(date)] Today's daily branch doesn't exist remotely yet"
         
         # Switch to main if not already there
         if [ "$CURRENT_BRANCH" != "main" ]; then
@@ -220,17 +142,20 @@ else
             git checkout main
         fi
         
-        echo "[$(date)] Hard-resetting to remote main"
+        echo "[$(date)] Syncing with remote main (prefer remote)"
         git reset --hard origin/main
         
         # Create today's branch from main for future work
         if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
             echo "[$(date)] Creating today's branch $TODAY_BRANCH from main"
             git checkout -b "$TODAY_BRANCH"
+        else
+            echo "[$(date)] Today's branch $TODAY_BRANCH already exists locally, switching to it"
+            git checkout "$TODAY_BRANCH"
         fi
     fi
     
-    # Clean up any untracked files after hard reset
+    # Clean up any untracked files only if we synced
     git clean -fd
 fi
 
