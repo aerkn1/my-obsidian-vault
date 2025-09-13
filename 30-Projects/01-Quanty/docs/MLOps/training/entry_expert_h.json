@@ -1,0 +1,15 @@
+{
+  "objective": "binary",
+  "num_leaves": 64,
+  "learning_rate": 0.05,
+  "feature_fraction": 0.9,
+  "bagging_fraction": 0.8,
+  "bagging_freq": 1,
+  "min_data_in_leaf": 50,
+  "lambda_l2": 1.0,
+  "metric": [
+    "auc",
+    "binary_logloss"
+  ],
+  "early_stopping_round": 200
+}

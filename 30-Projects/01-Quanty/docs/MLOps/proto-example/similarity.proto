@@ -1,0 +1,28 @@
+syntax = "proto3";
+package similarity;
+
+message NearestRequest {
+  repeated float embed = 1 [packed=true];
+  int32 k = 2;
+  string symbol = 3;
+  string timeframe = 4;
+}
+
+message Neighbor {
+  string symbol = 1;
+  string timeframe = 2;
+  int64  ts_ms = 3;
+  float  cosine = 4;
+  float  quality = 5;
+  float  realised_R = 6;
+}
+
+message NearestReply {
+  float sim_conf = 1;
+  float hist_rr_pct = 2;
+  repeated Neighbor topk = 3;
+}
+
+service SimilarityService {
+  rpc Nearest (NearestRequest) returns (NearestReply);
+}

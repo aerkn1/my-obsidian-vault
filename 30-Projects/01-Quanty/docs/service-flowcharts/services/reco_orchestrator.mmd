@@ -1,0 +1,44 @@
+flowchart TD
+RMQ["RabbitMQ\ntrading.bus"]:::bus
+TS["TimescaleDB"]:::db
+SVC["Reco-Orchestrator"]:::svc
+IN1["RMQ: ml.confirmed.*"]:::api
+IN1 --> SVC
+IN2["TS: last close, ATR, daily bands"]:::api
+IN2 --> SVC
+IN3["Redis/Config: macro flags"]:::api
+IN3 --> SVC
+ST1["Entry = last + offset×ATR (STOP/LIMIT)"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["SL = sl_kATR×ATR (±10% adj)"]:::svc
+SVC --> ST2
+ST2 --> SVC
+ST3["TP = max(rr_target, 0.9×pole)×SL"]:::svc
+SVC --> ST3
+ST3 --> SVC
+ST4["Risk% 0.25–1.5; MaxLev 1–7"]:::svc
+SVC --> ST4
+ST4 --> SVC
+ST5["Apply CVaR cap & HRP scale"]:::svc
+SVC --> ST5
+ST5 --> SVC
+ST6["Hold time & reasons; persist"]:::svc
+SVC --> ST6
+ST6 --> SVC
+OUT1["TS: trades"]:::api
+SVC --> OUT1
+OUT2["RabbitMQ: validated.recs.SYMBOL"]:::api
+SVC --> OUT2
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px

@@ -1,0 +1,30 @@
+flowchart TD
+    A[Start: Observe data\nSTABLES.D, BTC.D, ETH.D, OTHERS.D, TOTAL caps]
+
+    A --> B{Stable Dominance rising?}
+    B -->|Yes| C{Stable supply minting?}
+    B -->|No| N{Stable Dominance falling?}
+
+    C -->|Yes| C1[Fresh fiat inflow\nCheck TOTAL]
+    C -->|No| D[Risk-off rotation\nPrices likely down]
+
+    C1 -->|TOTAL rising| C1b[Bullish base\nIf BTC.D up -> BTC-led\nIf OTHERS.D up -> Alts gaining]
+    C1 -->|TOTAL flat/down| C1c[Dry powder parked\nWatch OI and exchange balances]
+
+    N -->|Yes| P{TOTAL rising?}
+    N -->|No| S[Neutral\nLook at BTC.D / ETH.D / OTHERS.D]
+
+    P -->|Yes| Q[Risk-on rotation\nIf BTC.D up -> BTC rally\nIf BTC.D down + OTHERS.D up -> Altseason]
+    P -->|No| R[Sideways chop\nRotation within crypto]
+
+    A --> E{BTC Dominance rising?}
+    E -->|Yes| E1[Risk concentrating in BTC\nCheck TOTAL trend]
+    E -->|No| F{BTC.D falling + OTHERS.D rising?}
+    F -->|Yes| F1[Altseason conditions\nConfirm TOTAL2/TOTAL3 rising]
+    F -->|No| G[Possible ETH leadership\nCheck ETH.D]
+
+    A --> H{Futures OI rising?}
+    H -->|Yes| H1{Funding skewed?}
+    H1 -->|Positive| H2[Leveraged longs\nRisk of long squeeze]
+    H1 -->|Negative| H3[Leveraged shorts\nRisk of short squeeze]
+    H -->|No| H4[Spot-driven move\nHealthier if spot volume rising]

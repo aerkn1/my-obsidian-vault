@@ -1,0 +1,20 @@
+family: pattern_cnn
+schema_ver: 7
+train:
+  epochs: 40
+  batch_size: 256
+  optimizer: adamw
+  lr: 0.001
+  weight_decay: 0.0001
+  early_stop_patience: 8
+augment:
+  time_warp: 0.1
+  scale_jitter: 0.1
+  mixup_alpha: 0.2
+loss:
+  classification: focal
+  gamma: 2.0
+  label_smoothing: 0.05
+export:
+  onnx_opset: 13
+  save_s3: s3://trade-ml-models/pattern_cnn

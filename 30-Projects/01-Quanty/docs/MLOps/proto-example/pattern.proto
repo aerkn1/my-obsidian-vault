@@ -1,0 +1,23 @@
+syntax = "proto3";
+package pattern;
+
+message Image64x64x3 {
+  bytes png = 1;
+  repeated float ch0 = 2 [packed=true];
+  repeated float ch1 = 3 [packed=true];
+  repeated float ch2 = 4 [packed=true];
+  string symbol = 5;
+  string timeframe = 6;
+  int64  t_close_ms = 7;
+}
+
+message PatternReply {
+  string pattern = 1;   
+  float  quality = 2;   
+  float  pole_kATR = 3; 
+  repeated float embed = 4 [packed=true]; 
+}
+
+service PatternService {
+  rpc Classify (Image64x64x3) returns (PatternReply);
+}

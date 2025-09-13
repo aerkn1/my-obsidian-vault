@@ -1,0 +1,14 @@
+flowchart TD
+    FIAT[Fiat]
+    STB[Stablecoins]
+    BTC[BTC / ETH]
+    ALTS[Altcoins]
+    NOTE[Notes: TOTAL falls when prices drop. Stable dominance can rise without minting. True exit occurs on redemption.]
+
+    FIAT -->|Mint inflow| STB
+    STB -->|Redeem outflow| FIAT
+    STB -->|Buy spot or margin| BTC
+    STB -->|Risk rotation| ALTS
+    BTC -->|Sell to stables| STB
+    ALTS -->|Sell to stables| STB
+    NOTE --- STB

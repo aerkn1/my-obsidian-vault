@@ -1,0 +1,43 @@
+flowchart TD
+RMQ["RabbitMQ\ntrading.bus"]:::bus
+TS["TimescaleDB"]:::db
+SVC["Macro On-Chain Ingestor (15m + daily)"]:::svc
+IN1["Covalent/Bitquery/Glassnode-like endpoints"]:::api
+IN1 --> SVC
+IN2["BTC/ETH/SOL exchange_netflow; BTC exchange_reserve%"]:::api
+IN2 --> SVC
+IN3["ETH gas_price; USDT+USDC CEX netflow USD"]:::api
+IN3 --> SVC
+IN4["BTC MVRV, aSOPR(7d), NUPL (daily)"]:::api
+IN4 --> SVC
+ST1["Align to :00/:15/:30/:45; pull with backoff"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["Validate vendor timestamps & units"]:::svc
+SVC --> ST2
+ST2 --> SVC
+ST3["Upsert macro_onchain_15m (no extrapolation)"]:::svc
+SVC --> ST3
+ST3 --> SVC
+ST4["Upsert macro_btc_daily (once/day)"]:::svc
+SVC --> ST4
+ST4 --> SVC
+ST5["Publish onchain.macro.15m (optional)"]:::svc
+SVC --> ST5
+ST5 --> SVC
+OUT1["Timescale: macro_onchain_15m, macro_btc_daily"]:::api
+SVC --> OUT1
+OUT2["RabbitMQ: onchain.macro.15m"]:::api
+SVC --> OUT2
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px

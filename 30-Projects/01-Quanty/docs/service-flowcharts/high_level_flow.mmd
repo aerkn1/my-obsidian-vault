@@ -1,0 +1,202 @@
+flowchart LR
+%% ============================================================
+%% TRADE-ANALYTICS PLATFORM — END-TO-END LOGIC & COMMUNICATIONS
+%% ============================================================
+
+%% ---------- LAYER 0: BUS / SHARED INFRA NODES ----------
+subgraph BUS[Message Bus & Shared Stores]
+  direction TB
+  RMQ["RabbitMQ (topic exchange)\nname: trading.bus"]:::bus
+  TS["TimescaleDB\nHypertables:\n- raw_bars, metric_15s, lob_1s\n- bar15m/1h/4h/1d (continuous aggregates)\n- macro_onchain_15m, macro_btc_daily\n- pattern_embeds, trades, explain_log\n- coin_registry"]:::db
+  RD["Redis Cluster\nfeature vectors\nkey: vec:SYMBOL:TF"]:::cache
+  S3["Model Store (S3/B2)\n/family/vX_Y_Z/model.onnx\nmetrics.json"]:::storage
+end
+
+%% ---------- LAYER 1: REGISTRY & MACRO ----------
+subgraph REG[1. Registry & Macro]
+  direction TB
+  SR["Symbol-Registry (nightly)\nInputs: Binance/OKX exchangeInfo, spreads; CoinGecko caps; banlist\nCompute: data_health 0..100; status ACTIVE/PROBATION/EXCLUDED; liquidity_cluster H/M/L\nOutput: coin_registry (TS); event symbol_events.updated (RMQ)"]:::svc
+  MOC["Macro On-Chain Ingestor (15m + daily)\nInputs: BTC/ETH/SOL exchange_netflow; BTC exchange_reserve_pct; ETH gas_price;\nUSDT+USDC cex_netflow_usd; BTC MVRV / aSOPR(7d) / NUPL (daily)\nOutput: macro_onchain_15m (TS); macro_btc_daily (TS); event onchain.macro.15m (opt)"]:::svc
+end
+
+%% ---------- LAYER 2: INGEST ----------
+subgraph ING[2. Ingest]
+  direction TB
+  OHI["OHLCV-Ingestor (realtime)\nInputs: aggTrade WS (Binance → OKX failover)\nProcess: bar-builder 1m; footprint bricks 1s\nOutput: raw_bars, footprint_1s (TS); event price_updates.SYMBOL.1m (RMQ)"]:::svc
+  MI["Metric-Ingestor (15s)\nInputs: funding, open interest REST/WS; tick sides for CVD\nProcess: compute cvd_delta per 15s window\nOutput: metric_15s (TS); event metric_updates.SYMBOL.15s (RMQ)"]:::svc
+  LOB["LOB-Sampler (1s, optional)\nInputs: depth@100ms WS\nProcess: sum top1/top10 bid/ask depth\nOutput: lob_1s (TS); event lob.snap.SYMBOL.1s (RMQ)"]:::svc
+end
+
+%% ---------- LAYER 3: FEATURE & PATTERN ----------
+subgraph FEAT[3. Feature & Pattern]
+  direction TB
+  FE["Feature-Engine (per bar)\nPulls: bar15m/1h/4h/1d (TS CAs), metric_15s, lob_1s, macro_onchain_15m,\nmacro_btc_daily, coin_registry, bias topics\nComputes (68+ dims): ATR/ATR_z, BB width, RSI zone/mom/div, EMA ratios, up_z/down_z,\ndaily bands (median ± σ), cvd_slope_z, oi_delta_z, absorption, spoof_ratio, heat_bias,\nfunding_prem_z, basis_z, rel_z_btc/eth, higher-TF bias (bias_4h, conf_4h),\nmacro indices (macro_spi/dpi/srs/act, chain_spi), BTC regime (mvrv_z, sopr flags, nupl_regime)\nWrites: Redis vec:SYMBOL:TF (float32[])\nEmits: feats_ready.SYMBOL.TF (RMQ)"]:::svc
+  PC["Pattern-Classifier (CNN → ONNX, gRPC)\nInput: 64×64×3 NumPy image of last 64 bars\nOutput: pattern, quality, pole_kATR, 64-d embed"]:::model
+  SIM["Similarity-API (pgvector)\nInput: 64-d embed\nProcess: HNSW cosine K-NN over pattern_embeds\nOutput: sim_conf, hist_rr_pct"]:::model
+end
+
+%% ---------- LAYER 4: INFERENCE ----------
+subgraph INF[4. Inference]
+  direction TB
+  IMX["Entry-Expert (LightGBM-ONNX H/M/L)\nInput: feature vector; uses liquidity_cluster\nOutput: side + Conf_pat (0..1)"]:::model
+  RISK["Risk-Model (LightGBM-Quantile)\nOutput: sl_kATR (stop distance in ATR units)"]:::model
+  RR["RR-Model (LightGBM-Quantile)\nOutput: rr_target (1.5..4.0 R typical)"]:::model
+  OFF["Entry-Offset (LightGBM-Quantile)\nOutput: offset_kATR (±). Sign → STOP vs LIMIT entry"]:::model
+  INFAPI["Inference-API (orchestrator)\nOn feats_ready: pull vector from Redis; call:\nPattern-Classifier → embed; Similarity → sim_conf; Entry-Expert → Conf_pat;\nRisk/RR/Offset → knobs\nEmit: ml.candidate.SYMBOL.TF (pattern, confs, sl_kATR, rr_target, offset_kATR, entry_style)"]:::svc
+end
+
+%% ---------- LAYER 5: CONFIRM & BIAS ----------
+subgraph CONFIRM[5. Confirm & Bias]
+  direction TB
+  CS["Confirm-Service\n15m/1h: wait-window 10m/45m, check footprint/LOB (spoof_ratio, absorption), CVD/OI slopes → approve / invert / veto\n4h/1d: publish provisional bias immediately after close; confirm/cancel next bar using slow metrics (funding trend, basis trend, 4h CVD)\nEmits: ml.confirmed, bias.update, bias.cancel"]:::svc
+end
+
+%% ---------- LAYER 6: RECO & EXEC MGMT ----------
+subgraph RECO[6. Recommendation & Execution Mgmt]
+  direction TB
+  RO["Reco-Orchestrator\nInputs: ml.confirmed; ATR & last price; macro flags (daily bands, MVRV/SOPR/NUPL)\nBuilds: entry = last + offset_kATR×ATR (STOP if +, LIMIT if −);\nSL = sl_kATR×ATR (adjust ±10% by ATR_z/liquidity/spoof/absorption);\nTP = max(rr_target, 0.9×pole_kATR)×SL;\nRisk% (0.25..1.5), MaxLev (1..7) by rules; Hold time by TF & trend\nGuards: daily bands (median±σ), CVaR cap (tail loss), HRP scale (cluster budget)\nWrites: trades (TS)\nEmits: validated.recs.SYMBOL (final alert payload)"]:::svc
+  PM["Position-Monitor\nInputs: user fills via exchange WS/API\nUpdates: executions table; live P/L\nEmits: trade.adjust.USER.SYMBOL (fills/PnL)"]:::svc
+  EA["Exit-Advisor (every 5–15m)\nTrail: +0.5R at +1R; move SL to BE at +0.7R; early-close if hostile flow (CVD flip + absorption)\nCap: max hold; decay RR near expiry\nEmits: trade.adjust.*"]:::svc
+end
+
+%% ---------- LAYER 7: DELIVERY ----------
+subgraph GQL[7. Delivery]
+  direction TB
+  GW["GraphQL-Gateway (Go gqlgen)\nQueries: candles, indicators, trades\nSubscriptions: alerts, price\nSources: TS, Redis, RMQ fan-in\nAuth: JWT tenant_id"]:::api
+  NW["Notification-Worker\nOn: validated.recs, trade.adjust\nSends: Telegram (thread + edits), Web/Mobile (WS/FCM)\nContent: entry/SL/TP/RR/risk/maxLev/hold + reason pills (pattern, bias, macro)"]:::svc
+  USER["Web/Mobile Clients"]:::user
+end
+
+%% ---------- LAYER 8: MLOPS ----------
+subgraph MLOPS[8. MLOps]
+  direction TB
+  BL["Back-Labeler\nOn trade close: compute realised R, run-up, draw-down\nAppend: labels.parquet (DVC) → S3"]:::ops
+  TR["Train-Runner (nightly CI)\nPull: DVC datasets\nTrain: Pattern-CNN; Entry-Expert H/M/L; Risk; RR; Offset\nCompare: precision@5 and avg realised-R vs prod\nIf better: upload .onnx + metrics.json to S3"]:::ops
+  MW["Model-Watcher (sidecar)\nSync S3 every 15m; SIGUSR1 hot-reload models in inference pods\nExpose: current semver per model"]:::ops
+end
+
+%% ---------- LAYER 9: OVERLAYS & OPS ----------
+subgraph OVLY[9. Portfolio Overlays & Ops]
+  direction TB
+  HRP["HRP Overlay (daily)\nCompute: correlation tree on 1h/4h returns; allocate cluster budgets\nOutput: Redis hrp:budget, event hrp.update.daily\nUse: Reco scales risk_pct for new trades in overweight clusters"]:::overlay
+  CVAR["CVaR Guard\nEstimate: CVaRα per symbol/TF in R units using outcomes (+ optional EVT)\nOutput: Redis cvar:SYMBOL:TF, event cvar.update\nUse: Reco caps size/leverage so expected tail loss ≤ budget"]:::overlay
+  OBS["Observability Stack\nPrometheus/Grafana/Loki/Tempo\nSLIs: latency p95, win rate, feature_missing_ratio, model_drift_psi\nRMQ lag; WS reconnect counts; error rates"]:::ops
+  RET["Retention & Gating Controller\nOn status changes: subscribe/unsubscribe heavy feeds; purge heavy data after 90d to S3 archive\nLight feeds (bars, funding, OI) continue for continuity"]:::ops
+end
+
+%% ================== DATA / MESSAGE FLOWS ===================
+
+%% Registry flows
+SR -->|"upsert coin_registry"| TS
+SR -->|"symbol_events.updated"| RMQ
+MOC -->|"upsert macro rows"| TS
+MOC -->|"onchain.macro.15m (optional)"| RMQ
+
+%% Ingest subscriptions from registry
+RMQ -->|"symbol_events.updated"| OHI
+RMQ -->|"symbol_events.updated"| MI
+RMQ -->|"symbol_events.updated"| LOB
+
+%% Ingest outputs
+OHI -->|"raw_bars, footprint_1s"| TS
+OHI -->|"price_updates.SYMBOL.1m"| RMQ
+MI -->|"metric_15s"| TS
+MI -->|"metric_updates.SYMBOL.15s"| RMQ
+LOB -->|"lob_1s"| TS
+LOB -->|"lob.snap.SYMBOL.1s"| RMQ
+
+%% Feature engine pulls/pushes
+TS --> FE
+RMQ -->|"price_updates / metric_updates / lob.snap"| FE
+FE -->|"set vec:SYMBOL:TF"| RD
+FE -->|"feats_ready.SYMBOL.TF"| RMQ
+
+%% Inference orchestration
+RMQ -->|"feats_ready.SYMBOL.TF"| INFAPI
+RD --> INFAPI
+INFAPI -->|"gRPC Classify (image→pattern)"| PC
+INFAPI -->|"gRPC Similar (embed→sim_conf)"| SIM
+INFAPI --> IMX
+INFAPI --> RISK
+INFAPI --> RR
+INFAPI --> OFF
+INFAPI -->|"ml.candidate.SYMBOL.TF"| RMQ
+
+%% Confirm
+RMQ -->|"ml.candidate.*"| CS
+RMQ -->|"price_updates / metric_updates / lob.snap"| CS
+CS -->|"ml.confirmed.SYMBOL.TF"| RMQ
+CS -->|"bias.update / bias.cancel"| RMQ
+RMQ -->|"bias.update / bias.cancel"| FE
+
+%% Reco & execution mgmt
+RMQ -->|"ml.confirmed.*"| RO
+TS --> RO
+HRP -->|"hrp.update.daily / hrp:budget"| RO
+CVAR -->|"cvar.update / cvar:SYMBOL:TF"| RO
+RO -->|"trades (audit)"| TS
+RO -->|"validated.recs.SYMBOL"| RMQ
+RMQ -->|"validated.recs"| NW
+GW --> USER
+NW --> USER
+
+%% Fills & exit
+USER --> PM
+PM -->|"trade.adjust.USER.SYMBOL"| RMQ
+EA -->|"trade.adjust.*"| RMQ
+RMQ -->|"trade.adjust.*"| NW
+RMQ -->|"trade.adjust.*"| EA
+
+%% MLOps loop
+TS --> BL
+BL -->|"labels.parquet (DVC)"| S3
+S3 --> TR
+TR -->|"*.onnx + metrics.json"| S3
+S3 --> MW
+MW --> IMX
+MW --> RISK
+MW --> RR
+MW --> OFF
+MW --> PC
+
+%% Observability taps (logical)
+OHI --> OBS
+MI  --> OBS
+FE  --> OBS
+INFAPI --> OBS
+CS  --> OBS
+RO  --> OBS
+NW  --> OBS
+GW  --> OBS
+HRP --> OBS
+CVAR --> OBS
+RET --> OBS
+BL  --> OBS
+TR  --> OBS
+MW  --> OBS
+
+%% ======================= LEGEND ============================
+subgraph LEGEND[Legend]
+  direction TB
+  L1["Service"]:::svc
+  L2["Model / ML Runtime"]:::model
+  L3["Database / Store"]:::db
+  L4["Bus / MQ"]:::bus
+  L5["Cache"]:::cache
+  L6["Overlay / Risk"]:::overlay
+  L7["Ops / MLOps"]:::ops
+  L8["Client / UI"]:::user
+end
+
+%% ===================== CLASS DEFINITIONS ===================
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px
