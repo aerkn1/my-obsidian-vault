@@ -1,0 +1,35 @@
+flowchart TD
+RMQ["RabbitMQ\ntrading.bus"]:::bus
+TS["TimescaleDB"]:::db
+RD["Redis Cluster"]:::cache
+SVC["GraphQL-Gateway (Go gqlgen)"]:::svc
+IN1["Client GraphQL queries/subscriptions"]:::api
+IN1 --> SVC
+IN2["TS: candles, trades"]:::api
+IN2 --> SVC
+IN3["Redis: features peek"]:::api
+IN3 --> SVC
+IN4["RMQ: alerts fan-in"]:::api
+IN4 --> SVC
+ST1["Resolve/paginate; JWT auth"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["Subscriptions fan-out; backpressure control"]:::svc
+SVC --> ST2
+ST2 --> SVC
+OUT1["WebSocket streams"]:::api
+SVC --> OUT1
+OUT2["HTTP GraphQL responses"]:::api
+SVC --> OUT2
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px

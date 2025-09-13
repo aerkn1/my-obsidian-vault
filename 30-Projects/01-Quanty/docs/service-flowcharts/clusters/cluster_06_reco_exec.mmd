@@ -1,0 +1,32 @@
+flowchart TD
+  subgraph RECO[Recommendation & Execution Mgmt]
+    direction TB
+    RO["Reco-Orchestrator\nBuild: entry/SL/TP, risk%, MaxLev, hold\nGuards: daily bands, CVaR, HRP\nWrites trades; emits validated.recs"]:::svc
+    PM["Position-Monitor\nInputs: user fills\nUpdates: execs & P/L\nEmits: trade.adjust.USER.SYMBOL"]:::svc
+    EA["Exit-Advisor (5–15m)\nTrail +0.5R @ +1R; SL→BE @ +0.7R; early-close on hostile flow; cap max hold"]:::svc
+  end
+  TS["TimescaleDB\ntrades, execs"]:::db
+  RMQ["RabbitMQ\ntrading.bus"]:::bus
+  HRP["HRP Overlay\nhrp:budget"]:::overlay
+  CVAR["CVaR Guard\ncvar:SYMBOL:TF"]:::overlay
+
+  RMQ -->|"ml.confirmed.*"| RO
+  HRP -->|"hrp:budget / hrp.update.daily"| RO
+  CVAR -->|"cvar:SYMBOL:TF / cvar.update"| RO
+  RO -->|"trades (audit)"| TS
+  RO -->|"validated.recs.SYMBOL"| RMQ
+  PM -->|"trade.adjust.USER.SYMBOL"| RMQ
+  EA -->|"trade.adjust.*"| RMQ
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px
+

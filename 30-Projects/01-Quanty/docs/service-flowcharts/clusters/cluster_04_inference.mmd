@@ -1,0 +1,32 @@
+flowchart TD
+  subgraph INF[Inference]
+    direction TB
+    INFAPI["Inference-API (orchestrator)\nOn feats_ready: pull vector → calls pattern, similarity, entry-expert, risk, RR, offset\nEmits: ml.candidate.SYMBOL.TF"]:::svc
+    IMX["Entry-Expert\n(LightGBM-ONNX H/M/L)\nOutput: side + Conf_pat"]:::model
+    RISK["Risk-Model (LGBM-Q)\nOutput: sl_kATR"]:::model
+    RR["RR-Model (LGBM-Q)\nOutput: rr_target"]:::model
+    OFF["Entry-Offset (LGBM-Q)\nOutput: offset_kATR (±)"]:::model
+  end
+  RD["Redis\nvec:SYMBOL:TF"]:::cache
+  RMQ["RabbitMQ\ntrading.bus"]:::bus
+
+  RMQ -->|"feats_ready.SYMBOL.TF"| INFAPI
+  RD --> INFAPI
+  INFAPI --> IMX
+  INFAPI --> RISK
+  INFAPI --> RR
+  INFAPI --> OFF
+  INFAPI -->|"ml.candidate.SYMBOL.TF"| RMQ
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px
+

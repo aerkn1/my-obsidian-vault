@@ -1,0 +1,33 @@
+flowchart TD
+RMQ["RabbitMQ\ntrading.bus"]:::bus
+S3["S3 Archive"]:::storage
+SVC["Retention & Gating Controller"]:::svc
+IN1["RMQ: symbol_events.updated"]:::api
+IN1 --> SVC
+ST1["EXCLUDED: unsubscribe heavy; purge+90d (archive S3)"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["ACTIVE after exclusion: resub heavy; backfill light"]:::svc
+SVC --> ST2
+ST2 --> SVC
+ST3["Publish audit events"]:::svc
+SVC --> ST3
+ST3 --> SVC
+OUT1["RMQ: control.subscribe/unsubscribe"]:::api
+SVC --> OUT1
+OUT2["S3: archives"]:::api
+SVC --> OUT2
+OUT3["RMQ: retention.events"]:::api
+SVC --> OUT3
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px

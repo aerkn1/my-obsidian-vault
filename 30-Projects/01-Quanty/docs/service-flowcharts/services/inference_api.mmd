@@ -1,0 +1,43 @@
+flowchart TD
+RMQ["RabbitMQ\ntrading.bus"]:::bus
+RD["Redis Cluster\nvec:SYMBOL:TF"]:::cache
+SVC["Inference-API (orchestrator)"]:::svc
+IN1["RMQ: feats_ready.SYMBOL.TF"]:::api
+IN1 --> SVC
+IN2["Redis: vec:SYMBOL:TF"]:::api
+IN2 --> SVC
+ST1["Image build → Pattern-Classifier"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["Similarity-API with embed"]:::svc
+SVC --> ST2
+ST2 --> SVC
+ST3["Entry-Expert (by liquidity_cluster)"]:::svc
+SVC --> ST3
+ST3 --> SVC
+ST4["Risk-Model → sl_kATR"]:::svc
+SVC --> ST4
+ST4 --> SVC
+ST5["RR-Model → rr_target"]:::svc
+SVC --> ST5
+ST5 --> SVC
+ST6["Offset-Model → offset_kATR"]:::svc
+SVC --> ST6
+ST6 --> SVC
+ST7["Emit ml.candidate"]:::svc
+SVC --> ST7
+ST7 --> SVC
+OUT1["RabbitMQ: ml.candidate.SYMBOL.TF"]:::api
+SVC --> OUT1
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px

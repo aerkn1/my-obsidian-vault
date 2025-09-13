@@ -1,0 +1,30 @@
+flowchart TD
+TS["TimescaleDB\npattern_embeds"]:::db
+SVC["Similarity-API (pgvector)"]:::svc
+IN1["64-d embed"]:::api
+IN1 --> SVC
+IN2["k (neighbors)"]:::api
+IN2 --> SVC
+ST1["HNSW cosine search"]:::svc
+SVC --> ST1
+ST1 --> SVC
+ST2["sim_conf = avg(conf) × cosine mean"]:::svc
+SVC --> ST2
+ST2 --> SVC
+ST3["hist_rr_pct from realised R"]:::svc
+SVC --> ST3
+ST3 --> SVC
+OUT1["JSON: {sim_conf, hist_rr_pct}"]:::api
+SVC --> OUT1
+
+classDef svc fill:#0ea5e9,stroke:#0369a1,stroke-width:2px,color:#ffffff;
+classDef model fill:#22c55e,stroke:#15803d,stroke-width:2px,color:#ffffff;
+classDef db fill:#f59e0b,stroke:#b45309,stroke-width:2px,color:#111111;
+classDef bus fill:#f43f5e,stroke:#be123c,stroke-width:2px,color:#ffffff;
+classDef cache fill:#a78bfa,stroke:#7c3aed,stroke-width:2px,color:#ffffff;
+classDef storage fill:#f97316,stroke:#9a3412,stroke-width:2px,color:#111111;
+classDef api fill:#64748b,stroke:#334155,stroke-width:2px,color:#ffffff;
+classDef overlay fill:#14b8a6,stroke:#0f766e,stroke-width:2px,color:#ffffff;
+classDef ops fill:#94a3b8,stroke:#475569,stroke-width:2px,color:#111111;
+classDef user fill:#e2e8f0,stroke:#64748b,stroke-width:2px,color:#111111;
+linkStyle default stroke-width:1.6px
