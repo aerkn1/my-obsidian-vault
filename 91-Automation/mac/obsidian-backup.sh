@@ -76,12 +76,12 @@ exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 if [ ! -d ".git" ]; then
     echo "[$(date)] Initializing git repository" >> "$LOG_FILE"
     git init >> "$LOG_FILE" 2>&1
-    git remote add origin https://Ardae1:$GH_TOKEN@github.com/Ardae1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
+    git remote add origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
     git fetch origin >> "$LOG_FILE" 2>&1
     git reset --hard origin/main >> "$LOG_FILE" 2>&1
 else
     # Update remote URL to use token
-    git remote set-url origin https://Ardae1:$GH_TOKEN@github.com/Ardae1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
+    git remote set-url origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
 fi
 
 # Check if there are any changes to commit (including untracked files)
