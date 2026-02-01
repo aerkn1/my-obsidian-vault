@@ -55,7 +55,7 @@ fi
 exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 
 # Set up remote URL
-git remote set-url origin https://Ardae1:$GH_TOKEN@github.com/Ardae1/my-obsidian-vault.git
+git remote set-url origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git
 
 # STEP 1: Check for any local changes that need to be preserved
 echo "[$(date)] Checking for local changes that need preservation..."
