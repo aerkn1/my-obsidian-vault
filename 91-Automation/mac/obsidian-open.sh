@@ -9,10 +9,14 @@ LOG_FILE="$HOME/obsidian-open.log"
 LOCK_FILE="$HOME/.obsidian-open.lock"
 STATE_FILE="$HOME/.obsidian-open-state"
 LOCAL_VAULT="$HOME/.obsidian-vault-backup"
+ASKPASS_FILE=""
 
 # Cleanup function to remove lock file on exit
 cleanup() {
     rm -f "$LOCK_FILE"
+    if [ -n "$ASKPASS_FILE" ]; then
+        rm -f "$ASKPASS_FILE"
+    fi
 }
 
 # Set trap to cleanup on exit, interrupt, or termination
@@ -57,7 +61,22 @@ exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 # Set up a clean remote URL. Auth is supplied per-command so tokens are not
 # persisted in .git/config.
 git remote set-url origin https://github.com/aerkn1/my-obsidian-vault.git
-GIT_AUTH=(-c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN")
+
+# LaunchAgents cannot answer interactive Git credential prompts. Use a temporary
+# askpass helper so HTTPS Git operations receive the GitHub token non-interactively.
+ASKPASS_FILE=$(mktemp "${TMPDIR:-/tmp}/obsidian-git-askpass.XXXXXX")
+cat > "$ASKPASS_FILE" <<'ASKPASS'
+#!/bin/sh
+case "$1" in
+    *Username*) printf '%s\n' "x-access-token" ;;
+    *Password*) printf '%s\n' "$GH_TOKEN" ;;
+    *) printf '\n' ;;
+esac
+ASKPASS
+chmod 700 "$ASKPASS_FILE"
+export GH_TOKEN
+export GIT_ASKPASS="$ASKPASS_FILE"
+export GIT_TERMINAL_PROMPT=0
 
 # STEP 1: Check for any local changes that need to be preserved
 echo "[$(date)] Checking for local changes that need preservation..."
@@ -75,7 +94,7 @@ CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 
 # Fetch quietly to check remote state
 echo "[$(date)] Fetching remote state to check for unpushed commits..."
-git "${GIT_AUTH[@]}" fetch origin > /dev/null 2>&1
+git fetch origin > /dev/null 2>&1
 
 # Check if current branch has unpushed commits
 if git rev-list --count @..@{u} > /dev/null 2>&1; then
@@ -115,7 +134,7 @@ else
     echo "[$(date)] No local changes detected - safe to sync with remote"
     
     # Check if today's daily branch exists remotely
-    if git "${GIT_AUTH[@]}" ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+    if git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
         echo "[$(date)] Today's daily branch exists remotely: $TODAY_BRANCH"
         
         # Switch to daily branch if not already there
