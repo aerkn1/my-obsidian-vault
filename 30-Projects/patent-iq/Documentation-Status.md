@@ -5,7 +5,7 @@
 ## ✅ Completed Documentation
 
 ### Core Documentation (Complete)
-1. **[[00-INDEX]]** - Project navigation hub
+1. **[[30-Projects/patent-iq/00-INDEX]]** - Project navigation hub
 2. **[[01-PRD-Main]]** - Main Product Requirements Document
    - 8 complete use cases with flows
    - 4D framework explanation

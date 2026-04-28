@@ -10,10 +10,14 @@ STATE_FILE="$HOME/.obsidian-last-backup"
 LOCK_FILE="$HOME/.obsidian-backup.lock"
 ICLOUD_VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/my-obsidian-vault"
 LOCAL_VAULT="$HOME/.obsidian-vault-backup"
+ASKPASS_FILE=""
 
 # Cleanup function to remove lock file on exit
 cleanup() {
     rm -f "$LOCK_FILE"
+    if [ -n "$ASKPASS_FILE" ]; then
+        rm -f "$ASKPASS_FILE"
+    fi
 }
 
 # Set trap to cleanup on exit, interrupt, or termination
@@ -72,12 +76,28 @@ fi
 # Redirect all output to log file with token redaction
 exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 
+# LaunchAgents cannot answer interactive Git credential prompts. Use a temporary
+# askpass helper so HTTPS Git operations receive the GitHub token non-interactively.
+ASKPASS_FILE=$(mktemp "${TMPDIR:-/tmp}/obsidian-git-askpass.XXXXXX")
+cat > "$ASKPASS_FILE" <<'ASKPASS'
+#!/bin/sh
+case "$1" in
+    *Username*) printf '%s\n' "x-access-token" ;;
+    *Password*) printf '%s\n' "$GH_TOKEN" ;;
+    *) printf '\n' ;;
+esac
+ASKPASS
+chmod 700 "$ASKPASS_FILE"
+export GH_TOKEN
+export GIT_ASKPASS="$ASKPASS_FILE"
+export GIT_TERMINAL_PROMPT=0
+
 # Initialize git repo if it doesn't exist
 if [ ! -d ".git" ]; then
     echo "[$(date)] Initializing git repository" >> "$LOG_FILE"
     git init >> "$LOG_FILE" 2>&1
     git remote add origin https://github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
-    git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" fetch origin >> "$LOG_FILE" 2>&1
+    git fetch origin >> "$LOG_FILE" 2>&1
     git reset --hard origin/main >> "$LOG_FILE" 2>&1
 else
     # Keep credentials out of .git/config; auth is supplied per Git command.
@@ -109,7 +129,7 @@ fi
 
 # Simple fetch to check for remote updates
 echo "[$(date)] Fetching remote changes" >> "$LOG_FILE"
-git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" fetch origin >> "$LOG_FILE" 2>&1
+git fetch origin >> "$LOG_FILE" 2>&1
 
 # Load commit message template from JSON
 if [ -f "$LOCAL_VAULT/91-Automation/commit-messages.json" ]; then
@@ -140,7 +160,7 @@ if git add . 2>> "$LOG_FILE"; then
         push_success=false
         for attempt in 1 2 3; do
             echo "[$(date)] Push attempt $attempt/3 to branch $CURRENT_BRANCH"
-            if git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+            if git push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
                 echo "[$(date)] Successfully backed up changes to GitHub branch $CURRENT_BRANCH"
 
                 push_success=true
