@@ -76,12 +76,29 @@ exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 if [ ! -d ".git" ]; then
     echo "[$(date)] Initializing git repository" >> "$LOG_FILE"
     git init >> "$LOG_FILE" 2>&1
-    git remote add origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
-    git fetch origin >> "$LOG_FILE" 2>&1
+    git remote add origin https://github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
+    git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" fetch origin >> "$LOG_FILE" 2>&1
     git reset --hard origin/main >> "$LOG_FILE" 2>&1
 else
-    # Update remote URL to use token
-    git remote set-url origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
+    # Keep credentials out of .git/config; auth is supplied per Git command.
+    git remote set-url origin https://github.com/aerkn1/my-obsidian-vault.git >> "$LOG_FILE" 2>&1
+fi
+
+# Ensure commits land on today's daily branch even if the app stayed open across
+# a date rollover or the opening script skipped sync to preserve local changes.
+TODAY_BRANCH="obsidian-$(date +%Y-%m-%d)"
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+echo "[$(date)] Current branch: $CURRENT_BRANCH" >> "$LOG_FILE"
+
+if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
+    if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+        echo "[$(date)] Switching to today's branch: $TODAY_BRANCH" >> "$LOG_FILE"
+        git switch "$TODAY_BRANCH" >> "$LOG_FILE" 2>&1
+    else
+        echo "[$(date)] Creating today's branch from current HEAD: $TODAY_BRANCH" >> "$LOG_FILE"
+        git switch -c "$TODAY_BRANCH" >> "$LOG_FILE" 2>&1
+    fi
+    CURRENT_BRANCH="$TODAY_BRANCH"
 fi
 
 # Check if there are any changes to commit (including untracked files)
@@ -90,13 +107,9 @@ if git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --other
     exit 0
 fi
 
-# Get current branch name (opening script already handles branch creation)
-CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
-echo "[$(date)] Current branch: $CURRENT_BRANCH" >> "$LOG_FILE"
-
 # Simple fetch to check for remote updates
 echo "[$(date)] Fetching remote changes" >> "$LOG_FILE"
-git fetch origin >> "$LOG_FILE" 2>&1
+git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" fetch origin >> "$LOG_FILE" 2>&1
 
 # Load commit message template from JSON
 if [ -f "$LOCAL_VAULT/91-Automation/commit-messages.json" ]; then
@@ -127,7 +140,7 @@ if git add . 2>> "$LOG_FILE"; then
         push_success=false
         for attempt in 1 2 3; do
             echo "[$(date)] Push attempt $attempt/3 to branch $CURRENT_BRANCH"
-            if git push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
+            if git -c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN" push origin "$CURRENT_BRANCH" 2>&1 | tee -a "$LOG_FILE"; then
                 echo "[$(date)] Successfully backed up changes to GitHub branch $CURRENT_BRANCH"
 
                 push_success=true

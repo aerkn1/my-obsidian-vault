@@ -54,8 +54,10 @@ fi
 # Redirect all output to log file with token redaction
 exec > >(sed "s/$GH_TOKEN/**REDACTED**/g" >> "$LOG_FILE") 2>&1
 
-# Set up remote URL
-git remote set-url origin https://aerkn1:$GH_TOKEN@github.com/aerkn1/my-obsidian-vault.git
+# Set up a clean remote URL. Auth is supplied per-command so tokens are not
+# persisted in .git/config.
+git remote set-url origin https://github.com/aerkn1/my-obsidian-vault.git
+GIT_AUTH=(-c "http.extraheader=AUTHORIZATION: bearer $GH_TOKEN")
 
 # STEP 1: Check for any local changes that need to be preserved
 echo "[$(date)] Checking for local changes that need preservation..."
@@ -73,7 +75,7 @@ CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
 
 # Fetch quietly to check remote state
 echo "[$(date)] Fetching remote state to check for unpushed commits..."
-git fetch origin > /dev/null 2>&1
+git "${GIT_AUTH[@]}" fetch origin > /dev/null 2>&1
 
 # Check if current branch has unpushed commits
 if git rev-list --count @..@{u} > /dev/null 2>&1; then
@@ -97,18 +99,15 @@ if [ "$UNCOMMITTED_CHANGES" = true ] || [ "$UNPUSHED_COMMITS" = true ]; then
     echo "[$(date)] - Unpushed commits: $UNPUSHED_COMMITS"
     echo "[$(date)] - Current branch: $CURRENT_BRANCH"
     
-    # Just ensure we're on the right branch for today if possible
+    # Keep local work, but do not continue committing to a previous daily branch
+    # after midnight/date rollover.
     if [ "$CURRENT_BRANCH" != "$TODAY_BRANCH" ]; then
-        # Only switch if the target branch exists and we have no uncommitted changes
-        if [ "$UNCOMMITTED_CHANGES" = false ] && git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-            echo "[$(date)] Switching to today's branch $TODAY_BRANCH (no uncommitted changes)"
-            if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-                git checkout "$TODAY_BRANCH"
-            else
-                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
-            fi
+        if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+            echo "[$(date)] Switching to today's local branch $TODAY_BRANCH while preserving local state"
+            git switch "$TODAY_BRANCH" || echo "[$(date)] Could not switch to $TODAY_BRANCH; staying on $CURRENT_BRANCH"
         else
-            echo "[$(date)] Staying on $CURRENT_BRANCH to preserve local changes"
+            echo "[$(date)] Creating today's branch $TODAY_BRANCH from current HEAD while preserving local state"
+            git switch -c "$TODAY_BRANCH" || echo "[$(date)] Could not create $TODAY_BRANCH; staying on $CURRENT_BRANCH"
         fi
     fi
     
@@ -116,7 +115,7 @@ else
     echo "[$(date)] No local changes detected - safe to sync with remote"
     
     # Check if today's daily branch exists remotely
-    if git ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
+    if git "${GIT_AUTH[@]}" ls-remote --heads origin "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
         echo "[$(date)] Today's daily branch exists remotely: $TODAY_BRANCH"
         
         # Switch to daily branch if not already there
@@ -124,9 +123,9 @@ else
             echo "[$(date)] Switching to daily branch $TODAY_BRANCH"
             
             if git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
-                git checkout "$TODAY_BRANCH"
+                git switch "$TODAY_BRANCH"
             else
-                git checkout -b "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
+                git switch -c "$TODAY_BRANCH" "origin/$TODAY_BRANCH"
             fi
         fi
         
@@ -139,7 +138,7 @@ else
         # Switch to main if not already there
         if [ "$CURRENT_BRANCH" != "main" ]; then
             echo "[$(date)] Switching to main branch"
-            git checkout main
+            git switch main
         fi
         
         echo "[$(date)] Syncing with remote main (prefer remote)"
@@ -148,10 +147,10 @@ else
         # Create today's branch from main for future work
         if ! git branch --list "$TODAY_BRANCH" | grep -q "$TODAY_BRANCH"; then
             echo "[$(date)] Creating today's branch $TODAY_BRANCH from main"
-            git checkout -b "$TODAY_BRANCH"
+            git switch -c "$TODAY_BRANCH"
         else
             echo "[$(date)] Today's branch $TODAY_BRANCH already exists locally, switching to it"
-            git checkout "$TODAY_BRANCH"
+            git switch "$TODAY_BRANCH"
         fi
     fi
     
